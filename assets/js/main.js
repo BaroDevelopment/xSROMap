@@ -116,6 +116,7 @@ $('#search input[type="text"]').keyup(function()
 	});	
 });
 // Coordinate search on click/enter
+searchId = 0
 $('#search .input-group-append').click(function()
 {
 	var searchCoordinates = $('#search input[type="text"]').val().split(',');
@@ -131,9 +132,13 @@ $('#search .input-group-append').click(function()
 				var r = parseFloat(searchCoordinates[3]);
 				if(!isNaN(z) && !isNaN(r)){
 					xSROMap.SetView(x,y,z,r);
+					// Add visual reference
+					xSROMap.AddLocation(searchId,'<a href="#" onclick="xSROMap.RemoveLocation('+(searchId++)+')">Remove <i class="fa fa-thrash-check"></i></a>',x,y,z,r);
 				}
 			}else{
 				xSROMap.SetView(x,y);
+				// Add visual reference
+				xSROMap.AddLocation(searchId,'<a href="#" onclick="xSROMap.RemoveLocation('+(searchId++)+')">Remove <i class="fa fa-thrash-check"></i></a>',x,y);
 			}
 		}
 	}
@@ -298,7 +303,7 @@ var ImportDrawingLayers = function(){
 				}
 			}
 		}
-		if(coords.length > 2)
+		if(coords.length >= 2)
 			xSROMap.AddDrawingShape("Polyline",coords);
 	}
 	else if(type=="mBot"){
@@ -321,7 +326,7 @@ var ImportDrawingLayers = function(){
 				}
 			}
 		}
-		if(coords.length > 2)
+		if(coords.length >= 2)
 			xSROMap.AddDrawingShape("Polyline",coords);
 	}
 	else if(type=="phBot"){
@@ -357,12 +362,15 @@ var ImportDrawingLayers = function(){
 						coords.push([x,y,z,region]);
 				}
 				else if(coord.length == 6){
-					var region = (parseInt(coord[2]) << 8) | parseInt(coord[1]);
+					var xsec = parseInt(coord[1]);
+					var ysec = parseInt(coord[2]);
 					var x = parseFloat(coord[3]);
 					var y = parseFloat(coord[4]);
 					var z = parseFloat(coord[5]);
-					if(!isNaN(region) && !isNaN(x) && !isNaN(y) && !isNaN(z))
+					if(!isNaN(x) && !isNaN(y) && !isNaN(z) && !isNaN(xsec) && !isNaN(ysec)){
+						var region = (ysec << 8) | xsec;
 						coords.push([x,y,z,region]);
+					}
 				}
 			}
 			else if(lines[i].startsWith("AttackArea"))
@@ -377,7 +385,30 @@ var ImportDrawingLayers = function(){
 				}
 			}
 		}
-		if(coords.length > 2)
+		if(coords.length >= 2)
+			xSROMap.AddDrawingShape("Polyline",coords);
+	}
+	else if(type=="RSBot"){
+		// Add paths
+		var coords = [];
+		for (var i = 0; i < lines.length; i++){
+			if(lines[i].startsWith("move "))
+			{
+				var data = lines[i].split(' ');
+				if(data.length == 6){
+					var x = parseFloat(data[1]);
+					var y = parseFloat(data[2]);
+					var z = parseFloat(data[3]);
+					var xsec = parseInt(data[4]);
+					var ysec = parseInt(data[5]);
+					if(!isNaN(x) && !isNaN(y) && !isNaN(z) && !isNaN(xsec) && !isNaN(ysec)){
+						var region = (ysec << 8) | xsec;
+						coords.push([x,y,z,region]);
+					}
+				}
+			}
+		}
+		if(coords.length >= 2)
 			xSROMap.AddDrawingShape("Polyline",coords);
 	}
 };
@@ -402,10 +433,7 @@ var ExportDrawingLayers = function(){
 					textarea += "> Marker ID:"+shape._leaflet_id+"\n";
 					
 					var coord = xSROMap.ConvertLatLngToCoords(shape._latlng);
-					if(coord.posX != null)
-						textarea += "PosX:"+Math.round(coord.posX)+",PosY:"+Math.round(coord.posY)+"\n";
-					else
-						textarea += "X:"+coord.x+",Y:"+coord.y+",Z:"+coord.z+",Region:"+coord.region+"\n";
+					textarea += "X:"+coord.x+",Y:"+coord.y+",Z:"+coord.z+",Region:"+coord.region+"\n";
 				} break;
 				case "Polyline":
 					textarea += "> Polyline:\n";
@@ -414,18 +442,17 @@ var ExportDrawingLayers = function(){
 
 					for(var i=0;i<shape._latlngs.length;i++){
 						var coord = xSROMap.ConvertLatLngToCoords(shape._latlngs[i]);
+						textarea += "X:"+coord.x+",Y:"+coord.y+",Z:"+coord.z+",Region:"+coord.region+"\n";
 						if(coord.posX != null){
-							textarea += "PosX:"+Math.round(coord.posX)+",PosY:"+Math.round(coord.posY)+"\n";
 							// calc distance at world map
 							if(lastCoord)
 								distance += Math.sqrt(Math.pow(lastCoord.posX-coord.posX,2)+Math.pow(lastCoord.posY-coord.posY,2));
 						}
 						else
 						{
-							textarea += "X:"+coord.x+",Y:"+coord.y+",Z:"+coord.z+",Region:"+coord.region+"\n";
 							// calc distance at cave
 							if(lastCoord)
-								distance += Math.sqrt(Math.pow(lastCoord.x-coord.x,2)+Math.pow(lastCoord.y-coord.y,2));
+								distance += Math.sqrt(Math.pow(lastCoord.x-coord.x,2)+Math.pow(lastCoord.y-coord.y,2)) / 10;
 						}
 						lastCoord = coord;
 					}
@@ -438,10 +465,7 @@ var ExportDrawingLayers = function(){
 
 					for(var i=0;i<shape._latlngs[0].length;i++){
 						var coord = xSROMap.ConvertLatLngToCoords(shape._latlngs[0][i]);
-						if(coord.posX != null)
-							textarea += "PosX:"+Math.round(coord.posX)+",PosY:"+Math.round(coord.posY)+"\n";
-						else
-							textarea += "X:"+coord.x+",Y:"+coord.y+",Z:"+coord.z+",Region:"+coord.region+"\n";
+						textarea += "X:"+coord.x+",Y:"+coord.y+",Z:"+coord.z+",Region:"+coord.region+"\n";
 					}
 					break;
 				case "Circle":
@@ -449,10 +473,7 @@ var ExportDrawingLayers = function(){
 					textarea += "> Circle:\n";
 
 					var coord = xSROMap.ConvertLatLngToCoords(shape._latlng);
-					if(coord.posX != null)
-						textarea += "PosX:"+Math.round(coord.posX)+",PosY:"+Math.round(coord.posY)+"\n";
-					else
-						textarea += "X:"+coord.x+",Y:"+coord.y+",Z:"+coord.z+",Region:"+coord.region+"\n";
+					textarea += "X:"+coord.x+",Y:"+coord.y+",Z:"+coord.z+",Region:"+coord.region+"\n";
 
 					textarea += "Radius:"+Math.round(shape._mRadius*192,2)+"\n";
 				} break;
@@ -537,6 +558,24 @@ var ExportDrawingLayers = function(){
 					else
 						textarea += "// Region:"+(coord.region > 32767?coord.region-65536:coord.region)+",X:"+coord.x+",Y:"+coord.y+",Z:"+coord.z+"\n";
 				} break;
+			}
+		}
+		else if (type == "RSBot")
+		{
+			if (shape.xMap.type == "Polyline"){
+				for (var i=0;i<shape._latlngs.length;i++){
+					var coord = xSROMap.ConvertLatLngToCoords(shape._latlngs[i]);
+					xsec = coord.region & 0xFF;
+					ysec = coord.region >> 8;
+					textarea += "move "+Math.round(coord.x)+" "+Math.round(coord.y)+" "+Math.round(coord.z)+" "+xsec+" "+ysec+"\n";
+				}
+			}
+			else if (shape.xMap.type == "Circle"){
+				var coord = xSROMap.ConvertLatLngToCoords(shape._latlng);
+				if(coord.posX != null)
+					textarea += "area "+Math.round(coord.posX)+" "+Math.round(coord.posY)+" "+Math.floor(shape._mRadius*192)+"\n";
+				else
+					textarea += "area "+Math.round(coord.x)+" "+Math.round(coord.y)+" "+Math.floor(shape._mRadius*192)+"\n";
 			}
 		}
 	}
